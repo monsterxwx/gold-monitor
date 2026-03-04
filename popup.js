@@ -183,6 +183,7 @@ class GoldPriceMonitor {
       document.getElementById('alertLowInput').value = settings.alertLow || '';
       document.getElementById('holdingsPriceInput').value = settings.holdingsPrice || '';
       document.getElementById('holdingsAmountInput').value = settings.holdingsAmount || '';
+      document.getElementById('availableCapitalInput').value = settings.availableCapital || '';
       document.getElementById('settingsModal').style.display = 'flex';
     });
   }
@@ -197,13 +198,15 @@ class GoldPriceMonitor {
     const alertLow = document.getElementById('alertLowInput').value.trim();
     const holdingsPrice = document.getElementById('holdingsPriceInput').value.trim();
     const holdingsAmount = document.getElementById('holdingsAmountInput').value.trim();
+    const availableCapital = document.getElementById('availableCapitalInput').value.trim();
 
     const settings = {
       apiKey,
       alertHigh,
       alertLow,
       holdingsPrice,
-      holdingsAmount
+      holdingsAmount,
+      availableCapital
     };
 
     chrome.storage.local.set({ settings }, () => {
@@ -229,6 +232,7 @@ class GoldPriceMonitor {
     const apiKey = settingsResult.settings?.apiKey;
     const holdingsPrice = settingsResult.settings?.holdingsPrice;
     const holdingsAmount = settingsResult.settings?.holdingsAmount;
+    const availableCapital = settingsResult.settings?.availableCapital;
 
     if (!apiKey) {
       alert("请先在设置中配置 DeepSeek API Key");
@@ -249,35 +253,35 @@ class GoldPriceMonitor {
         throw new Error("无有效的金价数据，无法分析");
       }
       let holdingsInfo = "【空仓或未知】用户未提供持仓数据。";
-      let actionConstraint = "给出具体的建仓仓位比例建议（如：动用X%资金买入），如果当前点位不适合建仓，请明确建议「空仓观望」。";
+      let actionConstraint = "根据用户可用资金，给出明确的建仓仓位比例建议（例如建议动用可用资金的20%建仓）。如果当前点位不适合建仓，请明确建议「空仓观望」。";
+      let capitalContext = availableCapital ? `用户的可用闲置资金为：${availableCapital} 元。` : "用户未提供闲置资金额度。";
 
       if (holdingsPrice && holdingsAmount) {
-        holdingsInfo = `【持有黄金】买入均价：${holdingsPrice} 元/克，当前持仓：${holdingsAmount} 克。`;
-        // 【核心优化点】：引入容忍度、持仓观望指令
-        actionConstraint = `请评估当前价格与买入均价的差值。
-  - 若在正常日内波动范围（例如亏损或盈利在 1% 以内），请明确建议「持仓观望」，强调耐心，切忌频繁操作。
-  - 若跌破关键支撑位且趋势走坏，才建议「减仓/止损」（给出具体克数）。
-  - 若有明显企稳反弹迹象，才建议「加仓做T」（给出具体克数）。`;
+        holdingsInfo = `【持有黄金】买入均价：${holdingsPrice} 元/克，当前持仓：${holdingsAmount} 克。${capitalContext}`;
+        actionConstraint = `请严格基于当前的盈亏比和资金利用效率，给出明确的网格/趋势交易策略：
+  - 若处于横盘窄幅震荡（距离成本价1%内），指令：【持仓熬鹰】，说明主力资金意图，切忌乱动。
+  - 若遇急速下杀触及强支撑且【资金充足】，指令：【分批左侧接多】，明确给出应动用总资金的百分之几（如动用10%买入XX克）平摊成本，并给出第二强支撑的防守位。
+  - 若快速拉升且遇强阻力，指令：【梯次止盈做T】，给出建议逢高减仓的具体克数或比例，锁定利润。`;
       } else if (holdingsPrice) {
-        holdingsInfo = `【持有黄金】买入均价：${holdingsPrice} 元/克，持仓量未知。`;
-        actionConstraint = "根据盈亏状态给出建议。对于小幅波动，请主推「持仓观望」；仅在明显破位时建议按百分比减仓。";
+        holdingsInfo = `【持有黄金】买入均价：${holdingsPrice} 元/克，持仓量未知。${capitalContext}`;
+        actionConstraint = "给出基于盈亏的安全边际建议：下杀至支撑位时主推【左侧低吸平摊成本】（结合剩余资金）；阻力位附近主推【逢高减仓】；其余垃圾时间主推【空仓/持仓观望】。";
+      } else if (availableCapital) {
+        holdingsInfo = `【空仓或未知】用户未提供持仓数据。${capitalContext}`;
       }
 
-      const prompt = `你是一名追求稳健、拒绝频繁交易的资深黄金交易员。请基于以下实时盘面与用户持仓数据，输出实战操作建议。
+      const prompt = `你是一家顶级对冲基金的首席贵金属操盘手。请基于真实的盘面数据与用户头寸，输出机构级别的日内操作指令。
 
-### 盘面与用户数据
-- 最新金价：${goldData.price} 元/克
-- 较昨收涨跌：${goldData.upAndDownAmt} 元 (${goldData.upAndDownRate})
-- 昨日收盘价：${goldData.yesterdayPrice} 元/克
-- 用户状态：${holdingsInfo}
+### 实时盘口与账户状态
+- 现价：${goldData.price} 元/克 | 较昨收：${goldData.upAndDownAmt} 元 (${goldData.upAndDownRate})
+- 昨收：${goldData.yesterdayPrice} 元/克
+- 账户：${holdingsInfo}
 
-### 任务要求
-请严格按以下3点输出，总字数严格控制在 150 字以内，语言风格要沉稳、果断。
-【极度重要】：必须克服“一跌就割肉、一涨就卖出”的散户思维，充分考虑黄金资产的抗风险属性。若非大级别破位，应多建议“持仓观望”。
+### 任务说明
+请输出高度浓缩的3段实战口令（总字数严控在180字内），拒绝散户情绪，采取绝对的机构理性思维：
 
-1. 短线策略：${actionConstraint} （当前浮亏/浮盈是多少？说明操作逻辑）
-2. 关键点位：预判日内最关键的支撑位和阻力位数值（精确到元/克），并说明点位不破则无需恐慌。
-3. 风险管理：一句话总结当前的核心风险点。`;
+1. 核心操作指令：${actionConstraint} （当前属于什么行情阶段？给出带明确数字的买卖/持有建议及资金分配比例）
+2. 关键攻防位：精确指出当前最合理的建仓/防守支撑位（元/克）和抛压阻力位（元/克），并说明盈亏比。
+3. 纪律与风控：一句话的铁血交易纪律提醒（如宏观风险、仓位红线或止损底线）。`;
 
       aiContent.innerHTML = '';
       aiResult.style.display = 'block';
