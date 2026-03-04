@@ -82,28 +82,51 @@ let lastAlert = {
 
 // 检查价格预警
 async function checkPriceAlerts(currentPrice) {
-  if (isNaN(currentPrice)) return;
+  console.log(`[Alert Check] 开始检查预警, 当前价格: ${currentPrice}`);
+  if (isNaN(currentPrice)) {
+    console.log("[Alert Check] 当前价格无效，退出");
+    return;
+  }
 
   chrome.storage.local.get(['settings'], (result) => {
     const settings = result.settings || {};
-    const alertHigh = parseFloat(settings.alertHigh);
-    const alertLow = parseFloat(settings.alertLow);
+    console.log("[Alert Check] 提取到的原始设置:", settings);
+
+    // 防御性解析高低价
+    const rawHigh = settings.alertHigh ? String(settings.alertHigh).trim() : "";
+    const rawLow = settings.alertLow ? String(settings.alertLow).trim() : "";
+
+    const alertHigh = rawHigh ? parseFloat(rawHigh) : NaN;
+    const alertLow = rawLow ? parseFloat(rawLow) : NaN;
     const now = new Date().getTime();
 
-    // 冷却时间，同一个预警10分钟内不重复触发
-    const COOLDOWN_MS = 10 * 60 * 1000;
+    // 冷却时间，同一个预警3分钟内不重复触发
+    const COOLDOWN_MS = 3 * 60 * 1000;
 
+    console.log(`[Alert Check] 解析后的受控阈值 - 高价: ${alertHigh}, 低价: ${alertLow}`);
+
+    // 独立检查高价
     if (!isNaN(alertHigh) && alertHigh > 0 && currentPrice >= alertHigh) {
-      if (lastAlert.type === 'high' && (now - lastAlert.time) < COOLDOWN_MS) return;
-
-      triggerNotification('金价飙升提醒', `当前金价 ${currentPrice} 元/克，已达到或超过您设定的目标高价 ${alertHigh} 元/克！考虑减仓。`);
-      lastAlert = { type: 'high', time: now };
+      console.log(`[Alert Check] 满足高价条件! 当前价 ${currentPrice} >= 设定的 ${alertHigh}`);
+      if (lastAlert.type === 'high' && (now - lastAlert.time) < COOLDOWN_MS) {
+        console.log(`[Alert Check] 拦截: 高价提醒仍在冷却中 (${Math.round((COOLDOWN_MS - (now - lastAlert.time)) / 1000)} 秒后恢复)`);
+      } else {
+        console.log("[Alert Check] 触发高价通知!");
+        triggerNotification('金价飙升提醒', `当前金价 ${currentPrice} 元/克，已达到或超过您设定的目标高价 ${alertHigh} 元/克！考虑减仓。`);
+        lastAlert = { type: 'high', time: now };
+      }
     }
-    else if (!isNaN(alertLow) && alertLow > 0 && currentPrice <= alertLow) {
-      if (lastAlert.type === 'low' && (now - lastAlert.time) < COOLDOWN_MS) return;
 
-      triggerNotification('金价下跌提醒', `当前金价 ${currentPrice} 元/克，已达到或低于您设定的目标低价 ${alertLow} 元/克！考虑加仓。`);
-      lastAlert = { type: 'low', time: now };
+    // 独立检查低价
+    if (!isNaN(alertLow) && alertLow > 0 && currentPrice <= alertLow) {
+      console.log(`[Alert Check] 满足低价条件! 当前价 ${currentPrice} <= 设定的 ${alertLow}`);
+      if (lastAlert.type === 'low' && (now - lastAlert.time) < COOLDOWN_MS) {
+        console.log(`[Alert Check] 拦截: 低价提醒仍在冷却中 (${Math.round((COOLDOWN_MS - (now - lastAlert.time)) / 1000)} 秒后恢复)`);
+      } else {
+        console.log("[Alert Check] 触发低价通知!");
+        triggerNotification('金价下跌提醒', `当前金价 ${currentPrice} 元/克，已达到或低于您设定的目标低价 ${alertLow} 元/克！考虑加仓。`);
+        lastAlert = { type: 'low', time: now };
+      }
     }
   });
 }
@@ -111,10 +134,26 @@ async function checkPriceAlerts(currentPrice) {
 function triggerNotification(title, message) {
   chrome.notifications.create({
     type: 'basic',
-    iconUrl: 'icons/icon.png',
+    iconUrl: chrome.runtime.getURL('icons/icon.png'), // 使用绝对路径获取图标，防止路径错误导致静默失败
     title: title,
     message: message,
-    priority: 2
+    priority: 2,
+    requireInteraction: true // 强制通知停留在屏幕上，直到用户点击关闭
+  }, (notificationId) => {
+    if (chrome.runtime.lastError) {
+      console.error("通知发送失败:", chrome.runtime.lastError.message);
+      // 如果因为图标原因失败，尝试不要图标再发一次
+      chrome.notifications.create({
+        type: 'basic',
+        iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', // 1x1 透明像素作为后备
+        title: title,
+        message: message,
+        priority: 2,
+        requireInteraction: true
+      });
+    } else {
+      console.log("通知发送成功, ID:", notificationId);
+    }
   });
 }
 
