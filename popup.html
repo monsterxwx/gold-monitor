@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>黄金猎手 - 实时监控</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', 'Microsoft YaHei', sans-serif;
+        }
+
+        body {
+            width: 330px;
+            background: #f8fafc;
+            /* Premium off-white background */
+            color: #1e293b;
+            /* Dark slate for high contrast */
+            overflow-x: hidden;
+        }
+
+        .container {
+            padding: 24px;
+            min-height: 100vh;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 24px;
+        }
+
+        .header h1 {
+            font-size: 19px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            color: #0f172a;
+        }
+
+        .price-display {
+            background: #ffffff;
+            border: 1px solid rgba(0, 0, 0, 0.04);
+            border-radius: 16px;
+            padding: 28px 20px;
+            text-align: center;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 20px -5px rgba(0, 0, 0, 0.06);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .price-display:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.08);
+        }
+
+        .price-label {
+            font-size: 13px;
+            color: #64748b;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+        }
+
+        .price {
+            font-size: 46px;
+            font-weight: 700;
+            margin-bottom: 4px;
+            letter-spacing: -0.5px;
+        }
+
+        .unit {
+            font-size: 13px;
+            color: #94a3b8;
+            font-weight: 500;
+        }
+
+        .info-panel {
+            background: #ffffff;
+            border: 1px solid rgba(0, 0, 0, 0.04);
+            border-radius: 14px;
+            padding: 18px;
+            margin-bottom: 22px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+        }
+
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 14px;
+            font-size: 13px;
+        }
+
+        .info-item:last-child {
+            margin-bottom: 0;
+            padding-top: 14px;
+            border-top: 1px dashed #e2e8f0;
+        }
+
+        .label {
+            color: #64748b;
+        }
+
+        .value {
+            font-weight: 600;
+            color: #334155;
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1.2fr 1fr;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 12px 8px;
+            border: 1px solid transparent;
+            border-radius: 10px;
+            background: #f1f5f9;
+            color: #475569;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn:hover {
+            background: #e2e8f0;
+            color: #1e293b;
+            transform: translateY(-1px);
+        }
+
+        .btn:active {
+            transform: translateY(1px);
+        }
+
+        #aiBtn {
+            background: rgba(139, 92, 246, 0.1);
+            color: #7c3aed;
+        }
+
+        #aiBtn:hover {
+            background: rgba(139, 92, 246, 0.15);
+            color: #6d28d9;
+        }
+
+        .btn:disabled {
+            background: #f1f5f9;
+            color: #94a3b8;
+            cursor: not-allowed;
+            transform: none;
+            opacity: 0.7;
+        }
+
+        .status {
+            text-align: center;
+            font-size: 11px;
+            color: #94a3b8;
+            margin-top: 16px;
+            font-weight: 500;
+        }
+
+        /* 涨跌颜色 (国内由于习惯，涨为红，跌为绿) */
+        .price-up {
+            color: #ef4444 !important;
+            /* Tailwind Red 500 */
+        }
+
+        .price-down {
+            color: #10b981 !important;
+            /* Tailwind Emerald 500 */
+        }
+
+        .neutral {
+            color: #64748b !important;
+        }
+
+        .error {
+            color: #b91c1c;
+            text-align: center;
+            padding: 12px;
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            font-size: 12px;
+        }
+
+        /* AI 弹窗结果样式 */
+        #aiResult {
+            background: #ffffff;
+            border: 1px solid #e9d5ff;
+            box-shadow: 0 4px 15px rgba(139, 92, 246, 0.08);
+            border-radius: 14px;
+            padding: 18px;
+            margin-top: 22px;
+            font-size: 13px;
+            line-height: 1.6;
+            color: #334155;
+            max-height: 250px;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        /* 自定义滚动条 */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        /* 设置弹窗现代风格 */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.4);
+            backdrop-filter: blur(4px);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: #ffffff;
+            width: 88%;
+            padding: 26px;
+            border-radius: 18px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            margin: auto;
+            position: relative;
+        }
+
+        .modal-content h3 {
+            font-size: 17px;
+            font-weight: 700;
+            margin-bottom: 22px;
+            text-align: center;
+            color: #0f172a;
+        }
+
+        .input-group {
+            margin-bottom: 16px;
+        }
+
+        .input-group label {
+            display: block;
+            font-size: 12px;
+            margin-bottom: 8px;
+            color: #64748b;
+            font-weight: 600;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 12px 14px;
+            background: #f8fafc;
+            border: 1px solid #cbd5e1;
+            border-radius: 10px;
+            color: #334155;
+            font-size: 13px;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            outline: none;
+        }
+
+        .input-group input:focus {
+            border-color: #38bdf8;
+            background: #ffffff;
+            box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.1);
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 26px;
+        }
+
+        .btn-primary {
+            flex: 1;
+            background: #0ea5e9;
+            color: white;
+            border: none;
+            padding: 12px 8px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-primary:hover {
+            background: #0284c7;
+        }
+
+        .btn-secondary {
+            flex: 1;
+            background: #f1f5f9;
+            color: #475569;
+            border: 1px solid #cbd5e1;
+            padding: 12px 8px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-secondary:hover {
+            background: #e2e8f0;
+            color: #1e293b;
+        }
+
+        .flex-row {
+            display: flex;
+            gap: 12px;
+        }
+
+        .flex-row .input-group {
+            flex: 1;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>黄金猎手 - 实时监控</h1>
+        </div>
+
+        <div id="errorMessage" class="error" style="display: none;"></div>
+
+        <div class="price-display">
+            <div class="price-label">最新金价</div>
+            <div class="price price-up" id="price">--</div> <!-- default class but will be updated JS side -->
+            <div class="unit">元/克</div>
+        </div>
+
+        <div class="info-panel">
+            <div class="info-item">
+                <span class="label">涨跌金额</span>
+                <span class="value" id="upAndDownAmt">--</span>
+            </div>
+            <div class="info-item">
+                <span class="label">涨跌幅</span>
+                <span class="value" id="upAndDownRate">--</span>
+            </div>
+            <div class="info-item">
+                <span class="label">昨收价</span>
+                <span class="value" id="yesterdayPrice">--</span>
+            </div>
+            <div class="info-item">
+                <span class="label">更新时间</span>
+                <span class="value" id="updateTime">--</span>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button id="refreshBtn" class="btn">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px;">
+                    <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2" />
+                </svg>
+                刷新
+            </button>
+            <button id="aiBtn" class="btn">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px;">
+                    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                </svg>
+                AI 分析
+            </button>
+            <button id="settingsBtn" class="btn">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px;">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path
+                        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+                    </path>
+                </svg>
+                设置
+            </button>
+        </div>
+
+        <div id="aiResult" style="display: none;">
+            <div style="font-weight: 700; margin-bottom: 8px; color: #7c3aed; display: flex; align-items: center;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;">
+                    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                </svg>
+                DeepSeek 操作建议
+            </div>
+            <div id="aiContent"></div>
+        </div>
+
+        <div class="status" id="status">● 正在连接...</div>
+
+        <!-- 设置弹窗 -->
+        <div id="settingsModal" class="modal-overlay">
+            <div class="modal-content">
+                <h3>设置</h3>
+
+                <div class="input-group">
+                    <label>DeepSeek API Key</label>
+                    <input type="password" id="apiKeyInput" placeholder="sk-...">
+                </div>
+
+                <div class="flex-row">
+                    <div class="input-group">
+                        <label>持仓均价 (元/克)</label>
+                        <input type="number" id="holdingsPriceInput" placeholder="选填, 例: 600">
+                    </div>
+
+                    <div class="input-group">
+                        <label>持仓数量 (克)</label>
+                        <input type="number" id="holdingsAmountInput" placeholder="选填, 例: 50">
+                    </div>
+                </div>
+
+                <div class="flex-row">
+                    <div class="input-group">
+                        <label>高价提醒 (元/克)</label>
+                        <input type="number" id="alertHighInput" placeholder="选填">
+                    </div>
+
+                    <div class="input-group">
+                        <label>低价提醒 (元/克)</label>
+                        <input type="number" id="alertLowInput" placeholder="选填">
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button id="closeSettingsBtn" class="btn-secondary">取消</button>
+                    <button id="saveSettingsBtn" class="btn-primary">保存设置</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+
+</html>
