@@ -142,6 +142,26 @@ class GoldPriceMonitor {
     // 更新状态
     document.getElementById("status").textContent = "数据已更新";
     document.getElementById("status").style.color = "#27ae60";
+
+    // 更新当前盈亏
+    chrome.storage.local.get(['settings'], (result) => {
+      const settings = result.settings || {};
+      const holdingsPrice = parseFloat(settings.holdingsPrice);
+      const holdingsAmount = parseFloat(settings.holdingsAmount);
+      const plElement = document.getElementById("profitAndLoss");
+
+      if (!isNaN(holdingsPrice) && !isNaN(holdingsAmount) && goldData.price) {
+        const currentPrice = parseFloat(goldData.price);
+        const profit = (currentPrice - holdingsPrice) * holdingsAmount;
+        plElement.textContent = profit >= 0 ? `+${profit.toFixed(2)}` : profit.toFixed(2);
+        this.setChangeColor(plElement, profit);
+      } else {
+        if (plElement) {
+          plElement.textContent = "--";
+          plElement.className = "value neutral";
+        }
+      }
+    });
   }
 
   setChangeColor(element, value) {
@@ -165,6 +185,7 @@ class GoldPriceMonitor {
     document.getElementById("upAndDownAmt").textContent = "--";
     document.getElementById("upAndDownRate").textContent = "--";
     document.getElementById("yesterdayPrice").textContent = "--";
+    document.getElementById("profitAndLoss").textContent = "--";
     document.getElementById("updateTime").textContent = "--";
 
     document.getElementById("status").textContent = "连接失败";
@@ -218,6 +239,7 @@ class GoldPriceMonitor {
         btn.textContent = originalText;
         btn.style.background = '#0ea5e9';
         this.closeSettings();
+        this.loadGoldData();
       }, 1000);
     });
   }
@@ -252,38 +274,45 @@ class GoldPriceMonitor {
       if (!goldData || !goldData.success) {
         throw new Error("无有效的金价数据，无法分析");
       }
-      let holdingsInfo = "【空仓或未知】用户未提供持仓数据。";
-      let actionConstraint = "根据用户可用资金，给出明确的建仓仓位比例建议（例如建议动用可用资金的20%建仓）。如果当前点位不适合建仓，请明确建议「空仓观望」。";
-      let capitalContext = availableCapital ? `用户的可用闲置资金为：${availableCapital} 元。` : "用户未提供闲置资金额度。";
+
+      // 1. 梳理账户净数据
+      let accountStatus = "";
+      let strategyFocus = "";
+      const capitalStr = availableCapital ? `可用闲置资金: ${availableCapital}元` : "可用闲置资金: 未知";
 
       if (holdingsPrice && holdingsAmount) {
-        holdingsInfo = `【持有黄金】买入均价：${holdingsPrice} 元/克，当前持仓：${holdingsAmount} 克。${capitalContext}`;
-        actionConstraint = `请严格基于当前的盈亏比和资金利用效率，给出明确的网格/趋势交易策略：
-  - 若处于横盘窄幅震荡（距离成本价1%内），指令：【持仓熬鹰】，说明主力资金意图，切忌乱动。
-  - 若遇急速下杀触及强支撑且【资金充足】，指令：【分批左侧接多】，明确给出应动用总资金的百分之几（强调：只要有机会，可动用最高达100%的可用资金买入，不要受传统30%仓位限制）平摊成本，并给出第二强支撑的防守位。
-  - 若快速拉升且遇强阻力，指令：【梯次止盈做T】，给出建议逢高减仓的具体克数或比例，锁定利润。`;
+        accountStatus = `【当前持仓】买入均价: ${holdingsPrice}元/克 | 持有量: ${holdingsAmount}克 | ${capitalStr}`;
+        strategyFocus = "重点分析当前现价与买入均价的差距。如果被套，请直白说明是在支撑位用闲置资金补仓摊平亏损，还是止损；如果盈利，请给出逢高卖出获利了结的具体目标价和克数；如果在成本价附近震荡，请建议耐心持有。";
       } else if (holdingsPrice) {
-        holdingsInfo = `【持有黄金】买入均价：${holdingsPrice} 元/克，持仓量未知。${capitalContext}`;
-        actionConstraint = "给出基于盈亏的安全边际建议：下杀至支撑位时主推【左侧低吸平摊成本】（强调：可动用最高100%剩余资金，无30%上限限制）；阻力位附近主推【逢高减仓】；其余垃圾时间主推【空仓/持仓观望】。";
-      } else if (availableCapital) {
-        holdingsInfo = `【空仓或未知】用户未提供持仓数据。${capitalContext}`;
+        accountStatus = `【当前持仓】买入均价: ${holdingsPrice}元/克 | 持有量: 未知 | ${capitalStr}`;
+        strategyFocus = "重点基于买入均价给出策略。明确提示到什么价格可以加仓拉低成本，到什么价格应该减仓落袋为安。";
+      } else {
+        accountStatus = `【当前空仓】${capitalStr}`;
+        strategyFocus = "重点寻找高确定性的入场机会。如果当前价格偏高，请直白建议“空仓观望”；如果遇到较好的下跌回调，请给出具体在哪个价位买入、买入多少资金。";
       }
 
-      const prompt = `你是一家顶级对冲基金的首席贵金属操盘手。请基于真实的盘面数据与用户头寸，输出机构级别的日内操作指令。
+      // 2. 构造直白、逻辑清晰的 Prompt
+      const prompt = `
+【实时行情】
+- 现价：${goldData.price} 元/克 (昨收: ${goldData.yesterdayPrice} 元/克)
+- 今日涨跌：${goldData.upAndDownAmt} 元 (${goldData.upAndDownRate})
 
-### 实时盘口与账户状态
-- 现价：${goldData.price} 元/克 | 较昨收：${goldData.upAndDownAmt} 元 (${goldData.upAndDownRate})
-- 昨收：${goldData.yesterdayPrice} 元/克
-- 账户：${holdingsInfo}
+【账户情况】
+- ${accountStatus}
 
-### 任务说明
-请输出高度浓缩的3段实战口令（总字数严控在180字内），拒绝散户情绪，采取绝对的机构理性思维：
+【分析与策略要求】
+1. 用户的“可用闲置资金”是专门用于炒金的钱。只要遇到了胜率极高、价格极具性价比的下跌位置，**允许建议动用最高100%的资金买入**，绝对不要出现“单品种不要超过总资产30%”这种刻板废话。
+2. 语言必须**直白、接地气、通俗易懂**，像有经验的老师傅带徒弟一样。绝对禁止使用“持仓熬鹰”、“左侧接多”、“做T”等生僻生硬的交易黑话。
+3. ${strategyFocus}
 
-1. 核心操作指令：${actionConstraint} （当前属于什么行情阶段？给出带明确数字的买卖/持有建议及资金分配比例）
-2. 关键攻防位：精确指出当前最合理的建仓/防守支撑位（元/克）和抛压阻力位（元/克），并说明盈亏比。
-3. 纪律与风控：一句话的铁血交易纪律提醒（注意：用户提供的可用资金已是专属配置于黄金的闲置资金，风控建议中请勿再限制“单品种不得超过总资金30%”，允许打满这笔闲余资金）。`;
+请严格按照以下4个模块输出你的分析和建议（总字数控制在500字以内）：
 
-      aiContent.innerHTML = '';
+📊 【盘面简析】：用一两句话向普通人解释一下今天的涨跌意味着什么，处于什么状态（比如大涨后的回调、阴跌寻底等）。
+🎯 【操作建议】：直接给出结论。买不买？卖不卖？继续拿还是立刻走？如果建议买卖，请明确给出动用多少可用资金（如50%、100%）。
+🛡️ 【关键价位】：给出接下来最需要关注的一个上涨阻力位（元/克）和一个下跌支撑位（元/克）。
+⚠️ 【风险提醒】：针对当前操作的一句大实话提醒（比如：跌破XX元必须认赔出局，千万别死扛；或者，目前追高风险极大等）。`;
+
+      aiContent.innerHTML = '<div style="color:#64748b; font-size:14px;">正在结合盘面与您的仓位生成最新策略...</div>';
       aiResult.style.display = 'block';
 
       const response = await fetch('https://api.deepseek.com/chat/completions', {
@@ -295,25 +324,24 @@ class GoldPriceMonitor {
         body: JSON.stringify({
           model: 'deepseek-chat',
           messages: [
-            { role: 'system', content: '你是一个具有10年实盘经验的顶级专业贵金属短线交易员，擅长通过价格异动精准制定支撑/阻力位及仓位管理策略。' },
+            {
+              // 调整系统人设：从“冷酷”变为“专业且接地气的实战教练”
+              role: 'system',
+              content: '你是一位拥有10年一线实战经验的贵金属分析师。你的风格是：逻辑严密、极其务实、用词大白话、拒绝模棱两可。你的目标是让完全不懂专业术语的普通投资者也能看懂何时买、何时卖、买多少。'
+            },
             { role: 'user', content: prompt }
           ],
-          temperature: 0.7,
-          max_tokens: 350,
+          temperature: 0.5, // 0.5 既能保证逻辑严谨，又能让语言表达比较自然流畅
+          max_tokens: 800,  // 放大 token 限制，确保 500 字的中文能完整生成不断尾
           stream: true
         })
       });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`API 请求失败: ${response.status} ${errorText}`);
-      }
 
       // 处理流式响应
       const reader = response.body.getReader();
       const decoder = new TextDecoder("utf-8");
       let partialLine = "";
-      let fullResponseText = ""; // 新增：保存完整的返回文本以便正则替换
+      let fullResponseText = "";
 
       while (true) {
         const { done, value } = await reader.read();
@@ -321,7 +349,7 @@ class GoldPriceMonitor {
 
         const chunk = decoder.decode(value, { stream: true });
         const lines = (partialLine + chunk).split('\n');
-        partialLine = lines.pop(); // 最后一行可能是不完整的
+        partialLine = lines.pop();
 
         for (const line of lines) {
           if (line.trim() === '') continue;
@@ -333,7 +361,7 @@ class GoldPriceMonitor {
               const data = JSON.parse(dataStr);
               if (data.choices && data.choices[0].delta && data.choices[0].delta.content) {
                 const content = data.choices[0].delta.content;
-                fullResponseText += content; // 累加
+                fullResponseText += content;
 
                 // 正则处理：把 Markdown 的 **加粗** 转换为 HTML 样式，并处理换行
                 let formattedText = fullResponseText

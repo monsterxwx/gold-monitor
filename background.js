@@ -101,7 +101,7 @@ async function checkPriceAlerts(currentPrice) {
     const now = new Date().getTime();
 
     // 冷却时间，同一个预警3分钟内不重复触发
-    const COOLDOWN_MS = 3 * 60 * 1000;
+    const COOLDOWN_MS = 10 * 60 * 1000;
 
     console.log(`[Alert Check] 解析后的受控阈值 - 高价: ${alertHigh}, 低价: ${alertLow}`);
 
