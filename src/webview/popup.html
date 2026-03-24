@@ -16,17 +16,20 @@
         }
 
         body {
-            width: 330px;
-            background: #f8fafc;
-            /* Premium off-white background */
+            display: flex;
+            justify-content: center;
+            background: var(--vscode-editor-background, #f8fafc);
             color: #1e293b;
-            /* Dark slate for high contrast */
-            overflow-x: hidden;
         }
 
         .container {
+            width: 360px;
+            margin-top: 5vh;
             padding: 24px;
-            min-height: 100vh;
+            background: #f8fafc;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            height: fit-content;
         }
 
         .header {

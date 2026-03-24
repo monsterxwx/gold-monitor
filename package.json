@@ -1,0 +1,41 @@
+{
+    "name":  "vscode-gold-monitor",
+    "displayName":  "黄金猎手 - 实时金价与AI盯盘",
+    "description":  "提供实时高频金价监控，集�?DeepSeek AI 智能仓位分析与自定义价格区间预警功能",
+    "version":  "1.0.0",
+    "engines":  {
+                    "vscode":  "^1.85.0"
+                },
+    "categories":  [
+                       "Other"
+                   ],
+    "activationEvents":  [
+                             "onStartupFinished"
+                         ],
+    "main":  "./out/extension.js",
+    "contributes":  {
+                        "commands":  [
+                                         {
+                                             "command":  "gold-monitor.showUI",
+                                             "title":  "黄金猎手: 打开面板"
+                                         },
+                                         {
+                                             "command":  "gold-monitor.refreshPrice",
+                                             "title":  "黄金猎手: 手动刷新金价"
+                                         }
+                                     ]
+                    },
+    "scripts":  {
+                    "vscode:prepublish":  "npm run compile",
+                    "compile":  "tsc -p ./",
+                    "watch":  "tsc -watch -p ./",
+                    "pretest":  "npm run compile"
+                },
+    "devDependencies":  {
+                            "@types/vscode":  "^1.85.0",
+                            "@types/node":  "18.x",
+                            "typescript":  "^5.3.3"
+                        },
+    "publisher":  "monsterxwx",
+    "repository":  "https://github.com/monsterxwx/gold-monitor"
+}

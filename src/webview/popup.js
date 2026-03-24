@@ -6,6 +6,14 @@ class GoldPriceMonitor {
   init() {
     this.bindEvents();
     this.loadGoldData();
+    
+    // 监听从 VS Code 主动推送的数据更新
+    window.addEventListener('message', (event) => {
+        const message = event.data;
+        if (message.action === 'updatePrice' && message.goldData) {
+            this.updateDisplay(message.goldData);
+        }
+    });
   }
 
   bindEvents() {
@@ -144,8 +152,8 @@ class GoldPriceMonitor {
     document.getElementById("status").style.color = "#27ae60";
 
     // 更新当前盈亏
-    chrome.storage.local.get(['settings'], (result) => {
-      const settings = result.settings || {};
+    this.sendMessage({ action: 'getSettings' }).then((settings) => {
+      settings = settings || {};
       const holdingsPrice = parseFloat(settings.holdingsPrice);
       const holdingsAmount = parseFloat(settings.holdingsAmount);
       const plElement = document.getElementById("profitAndLoss");
@@ -197,8 +205,8 @@ class GoldPriceMonitor {
   }
 
   openSettings() {
-    chrome.storage.local.get(['settings'], (result) => {
-      const settings = result.settings || {};
+    this.sendMessage({ action: 'getSettings' }).then((settings) => {
+      settings = settings || {};
       document.getElementById('apiKeyInput').value = settings.apiKey || '';
       document.getElementById('alertHighInput').value = settings.alertHigh || '';
       document.getElementById('alertLowInput').value = settings.alertLow || '';
@@ -230,7 +238,7 @@ class GoldPriceMonitor {
       availableCapital
     };
 
-    chrome.storage.local.set({ settings }, () => {
+    this.sendMessage({ action: 'saveSettings', settings }).then(() => {
       const btn = document.getElementById('saveSettingsBtn');
       const originalText = btn.textContent;
       btn.textContent = '已保存！';
@@ -250,11 +258,11 @@ class GoldPriceMonitor {
     const aiContent = document.getElementById('aiContent');
 
     // 检查API Key
-    const settingsResult = await new Promise(resolve => chrome.storage.local.get(['settings'], resolve));
-    const apiKey = settingsResult.settings?.apiKey;
-    const holdingsPrice = settingsResult.settings?.holdingsPrice;
-    const holdingsAmount = settingsResult.settings?.holdingsAmount;
-    const availableCapital = settingsResult.settings?.availableCapital;
+    const settings = await this.sendMessage({ action: 'getSettings' });
+    const apiKey = settings?.apiKey;
+    const holdingsPrice = settings?.holdingsPrice;
+    const holdingsAmount = settings?.holdingsAmount;
+    const availableCapital = settings?.availableCapital;
 
     if (!apiKey) {
       alert("请先在设置中配置 DeepSeek API Key");
@@ -268,8 +276,7 @@ class GoldPriceMonitor {
 
     try {
       // 获取最新金价数据
-      const dataResult = await new Promise(resolve => chrome.storage.local.get(['goldData'], resolve));
-      const goldData = dataResult.goldData;
+      const goldData = await this.sendMessage({ action: 'getGoldData' });
 
       if (!goldData || !goldData.success) {
         throw new Error("无有效的金价数据，无法分析");
@@ -388,20 +395,34 @@ class GoldPriceMonitor {
 
   sendMessage(message) {
     return new Promise((resolve, reject) => {
-      console.log("发送消息:", message);
-
-      chrome.runtime.sendMessage(message, (response) => {
-        console.log("收到响应:", response);
-
-        if (chrome.runtime.lastError) {
-          console.error("消息发送错误:", chrome.runtime.lastError);
-          reject(new Error(chrome.runtime.lastError.message));
-        } else if (response) {
-          resolve(response);
-        } else {
-          reject(new Error("未收到响应"));
+      console.log("发送消息到 VS Code:", message);
+      const actionName = message.action + 'Response';
+      
+      const listener = (event) => {
+        const data = event.data;
+        if (data && data.action === actionName) {
+          window.removeEventListener('message', listener);
+          console.log("收到 VS Code 响应:", data);
+          
+          if (message.action === 'getGoldData') resolve(data.goldData);
+          else if (message.action === 'manualRefresh') resolve(data.result);
+          else if (message.action === 'getSettings') resolve(data.settings);
+          else if (message.action === 'saveSettings') resolve(data.success);
+          else resolve(data);
         }
-      });
+      };
+      
+      window.addEventListener('message', listener);
+      if (window.vscodeApi) {
+        window.vscodeApi.postMessage(message);
+      } else {
+        console.warn("vscodeApi 未初始化");
+      }
+      
+      setTimeout(() => {
+        window.removeEventListener('message', listener);
+        reject(new Error("VS Code 响应超时: " + message.action));
+      }, 5000);
     });
   }
 }
