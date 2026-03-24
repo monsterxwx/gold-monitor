@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "黄金猎手 - 实时金价与AI盯盘",
-    "version": "1.1",
+    "version": "1.2",
     "description": "提供实时高频金价监控，集成 DeepSeek AI 智能仓位分析与自定义价格区间预警功能。",
     "permissions": [
         "storage",
